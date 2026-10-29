@@ -1,8 +1,10 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 const SOURCE_URL =
   "https://raw.githubusercontent.com/DataChant/PowerBI-Visuals-Marketplace/main/Custom%20Visuals.csv";
-const OUTPUT = "public/data/catalog.json";
+const LIST_OUTPUT = "public/data/catalog.json";
+const ITEMS_DIR = "public/data/items";
 
 const CATEGORY_LABELS = {
   "pbiv-comparison": "对比分析",
@@ -25,7 +27,7 @@ const CATEGORY_LABELS = {
 
 const CERTIFIED_TAGS = new Set(["PowerBICertified"]);
 const MAX_DESCRIPTION = 1400;
-const MAX_SUMMARY = 220;
+const MAX_SUMMARY = 120;
 
 export function parseCsv(text) {
   const rows = [];
@@ -111,6 +113,10 @@ function parseNumber(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+export function detailFileName(id) {
+  return `${id.replace(/[^a-zA-Z0-9._-]/g, "_")}.json`;
+}
+
 export function normalizeRecord(row) {
   const id = (row.ID || "").trim();
   const name = (row.Name || "").trim();
@@ -131,11 +137,6 @@ export function normalizeRecord(row) {
     summary: truncate(summarySource, MAX_SUMMARY),
     description: fullSource ? truncate(fullSource, MAX_DESCRIPTION) : null,
     categories: categories.length > 0 ? categories : ["其他图表"],
-    keywords: (row.Keywords || "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean)
-      .slice(0, 12),
     pricing: (row["App Free Type"] || "").trim() === "Free" ? "免费" : "付费",
     certified: (row["Is Certified"] || "").trim() === "Certified",
     rating: Math.round(parseNumber(row["Average Rating"]) * 10) / 10,
@@ -151,6 +152,45 @@ export function normalizeRecord(row) {
     privacyUrl: httpUrl(row.PrivacyPolicyUrl),
     supportUrl: httpUrl(row.SupportLink),
     tags: rawCategories.filter((tag) => !CERTIFIED_TAGS.has(tag)),
+    keywords: (row.Keywords || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .slice(0, 6),
+  };
+}
+
+export function toListRecord(record) {
+  return {
+    id: record.id,
+    name: record.name,
+    publisher: record.publisher,
+    summary: record.summary,
+    categories: record.categories,
+    pricing: record.pricing,
+    certified: record.certified,
+    rating: record.rating,
+    ratingCount: record.ratingCount,
+    popularity: record.popularity,
+    releaseDate: record.releaseDate,
+    version: record.version,
+    iconUrl: record.iconUrl,
+    marketplaceUrl: record.marketplaceUrl,
+    hasPbix: Boolean(record.pbixUrl),
+    detail: detailFileName(record.id),
+  };
+}
+
+export function toDetailRecord(record) {
+  return {
+    description: record.description,
+    keywords: record.keywords,
+    tags: record.tags,
+    pbivizUrl: record.pbivizUrl,
+    pbixUrl: record.pbixUrl,
+    legalTermsUrl: record.legalTermsUrl,
+    privacyUrl: record.privacyUrl,
+    supportUrl: record.supportUrl,
   };
 }
 
@@ -185,11 +225,11 @@ async function fetchSource() {
   }
 }
 
-async function readPreviousGeneratedAt(records) {
+async function readPreviousGeneratedAt(list) {
   try {
-    const previous = JSON.parse(await readFile(OUTPUT, "utf8"));
-    const sameVisuals = JSON.stringify(previous.visuals) === JSON.stringify(records);
-    return sameVisuals && typeof previous.meta?.generatedAt === "string" ? previous.meta.generatedAt : null;
+    const previous = JSON.parse(await readFile(LIST_OUTPUT, "utf8"));
+    const sameList = JSON.stringify(previous.visuals) === JSON.stringify(list);
+    return sameList && typeof previous.meta?.generatedAt === "string" ? previous.meta.generatedAt : null;
   } catch {
     return null;
   }
@@ -199,11 +239,14 @@ async function main() {
   const csv = await fetchSource();
   const { records, skipped, columns } = normalizeCsv(csv);
   if (records.length < 100) throw new Error(`Unsafe record count: ${records.length}`);
+
   const categories = {};
   for (const record of records) {
     for (const category of record.categories) categories[category] = (categories[category] || 0) + 1;
   }
-  const previousGeneratedAt = await readPreviousGeneratedAt(records);
+
+  const list = records.map(toListRecord);
+  const previousGeneratedAt = await readPreviousGeneratedAt(list);
   const payload = {
     meta: {
       generatedAt: previousGeneratedAt ?? new Date().toISOString(),
@@ -217,11 +260,19 @@ async function main() {
       columns,
       categories,
     },
-    visuals: records,
+    visuals: list,
   };
+
+  await rm(ITEMS_DIR, { recursive: true, force: true });
+  await mkdir(ITEMS_DIR, { recursive: true });
   await mkdir("public/data", { recursive: true });
-  await writeFile(OUTPUT, JSON.stringify(payload));
-  console.log(`Wrote ${records.length} records (${skipped} skipped) to ${OUTPUT}`);
+  await writeFile(LIST_OUTPUT, JSON.stringify(payload));
+  for (const record of records) {
+    await writeFile(join(ITEMS_DIR, detailFileName(record.id)), JSON.stringify(toDetailRecord(record)));
+  }
+
+  console.log(`Wrote ${records.length} list records (${skipped} skipped) to ${LIST_OUTPUT}`);
+  console.log(`Wrote ${records.length} detail files to ${ITEMS_DIR}`);
   console.log("Categories:", categories);
 }
 

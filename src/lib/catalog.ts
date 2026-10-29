@@ -3,7 +3,6 @@ export type Visual = {
   name: string;
   publisher: string | null;
   summary: string;
-  description: string | null;
   categories: string[];
   keywords: string[];
   pricing: "免费" | "付费";
@@ -15,12 +14,19 @@ export type Visual = {
   version: string | null;
   iconUrl: string | null;
   marketplaceUrl: string | null;
+  hasPbix: boolean;
+  detail: string;
+};
+
+export type VisualDetail = {
+  description: string | null;
+  keywords: string[];
+  tags: string[];
   pbivizUrl: string | null;
   pbixUrl: string | null;
   legalTermsUrl: string | null;
   privacyUrl: string | null;
   supportUrl: string | null;
-  tags: string[];
 };
 
 export type CatalogMeta = {
@@ -98,7 +104,7 @@ export function filterVisuals(visuals: Visual[], filters: FilterState): Visual[]
     if (filters.category !== "全部" && !visual.categories.includes(filters.category)) return false;
     if (filters.pricing !== "全部" && visual.pricing !== filters.pricing) return false;
     if (filters.certifiedOnly && !visual.certified) return false;
-    if (filters.pbixOnly && !safeUrl(visual.pbixUrl)) return false;
+    if (filters.pbixOnly && !visual.hasPbix) return false;
     return true;
   });
   return sortVisuals(filtered, filters.sort);

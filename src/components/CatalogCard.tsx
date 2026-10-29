@@ -33,7 +33,6 @@ type Props = {
 
 export function CatalogCard({ visual, favorite, onToggleFavorite, onOpen }: Props) {
   const marketplace = safeUrl(visual.marketplaceUrl);
-  const pbix = safeUrl(visual.pbixUrl);
 
   return (
     <article className="visual-card">
@@ -68,9 +67,7 @@ export function CatalogCard({ visual, favorite, onToggleFavorite, onOpen }: Prop
           {marketplace && (
             <a href={marketplace} target="_blank" rel="noreferrer">商店 ↗</a>
           )}
-          {pbix && (
-            <a href={pbix} target="_blank" rel="noreferrer">PBIX 示例 ↗</a>
-          )}
+          {visual.hasPbix && <span className="pbix-hint">PBIX</span>}
           <button
             type="button"
             className={`star ${favorite ? "on" : ""}`}

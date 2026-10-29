@@ -1,14 +1,51 @@
-import { useEffect } from "react";
-import type { Visual } from "../lib/catalog";
+import { useEffect, useState } from "react";
+import type { Visual, VisualDetail } from "../lib/catalog";
 import { formatDate, safeUrl } from "../lib/catalog";
 import { VisualIcon } from "./CatalogCard";
 
 type Props = {
   visual: Visual;
+  dataBase: string;
   onClose: () => void;
 };
 
-export function DetailPanel({ visual, onClose }: Props) {
+type DetailState =
+  | { status: "loading" }
+  | { status: "ready"; detail: VisualDetail }
+  | { status: "error" };
+
+export function DetailPanel({ visual, dataBase, onClose }: Props) {
+  const [detail, setDetail] = useState<DetailState>({ status: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    setDetail({ status: "loading" });
+    const localFallback = `${import.meta.env.BASE_URL}data/items/${visual.detail}`;
+    const primary = `${dataBase}/items/${visual.detail}`;
+
+    async function load() {
+      for (const url of primary === localFallback ? [primary] : [primary, localFallback]) {
+        try {
+          const response = await fetch(url, { signal: controller.signal, cache: "force-cache" });
+          if (!response.ok) continue;
+          const payload = (await response.json()) as VisualDetail;
+          if (!cancelled) setDetail({ status: "ready", detail: payload });
+          return;
+        } catch {
+          if (controller.signal.aborted) return;
+        }
+      }
+      if (!cancelled) setDetail({ status: "error" });
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [dataBase, visual.detail]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -17,14 +54,17 @@ export function DetailPanel({ visual, onClose }: Props) {
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const links = [
-    { label: "商店详情", url: safeUrl(visual.marketplaceUrl) },
-    { label: "PBIX 示例", url: safeUrl(visual.pbixUrl) },
-    { label: "PBIVIZ 文件", url: safeUrl(visual.pbivizUrl) },
-    { label: "支持页面", url: safeUrl(visual.supportUrl) },
-    { label: "隐私政策", url: safeUrl(visual.privacyUrl) },
-    { label: "授权条款", url: safeUrl(visual.legalTermsUrl) },
-  ].filter((link) => link.url);
+  const ready = detail.status === "ready" ? detail.detail : null;
+  const links = ready
+    ? [
+        { label: "商店详情", url: safeUrl(visual.marketplaceUrl) },
+        { label: "PBIX 示例", url: safeUrl(ready.pbixUrl) },
+        { label: "PBIVIZ 文件", url: safeUrl(ready.pbivizUrl) },
+        { label: "支持页面", url: safeUrl(ready.supportUrl) },
+        { label: "隐私政策", url: safeUrl(ready.privacyUrl) },
+        { label: "授权条款", url: safeUrl(ready.legalTermsUrl) },
+      ].filter((link) => link.url)
+    : [];
 
   return (
     <div className="detail-backdrop" onClick={onClose}>
@@ -56,7 +96,15 @@ export function DetailPanel({ visual, onClose }: Props) {
           <div><dt>评分</dt><dd>{visual.rating > 0 ? `★ ${visual.rating.toFixed(1)}` : "暂无"}</dd></div>
           <div><dt>评分数</dt><dd>{visual.ratingCount}</dd></div>
         </dl>
-        <p className="detail-description">{visual.description || visual.summary || "来源未提供描述。"}</p>
+
+        {detail.status === "loading" && <p className="detail-loading">正在读取详细说明…</p>}
+        {detail.status === "error" && (
+          <p className="detail-description">{visual.summary || "来源未提供更多描述。"}</p>
+        )}
+        {ready && (
+          <p className="detail-description">{ready.description || visual.summary || "来源未提供描述。"}</p>
+        )}
+
         {links.length > 0 && (
           <div className="detail-actions">
             {links.map((link, index) => (

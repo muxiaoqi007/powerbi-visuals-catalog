@@ -14,12 +14,13 @@ import {
 
 const REPO_URL = "https://github.com/muxiaoqi007/powerbi-visuals-catalog";
 const ACTIONS_URL = `${REPO_URL}/actions/workflows/sync-data.yml`;
+const DATA_CDN = "https://cdn.jsdelivr.net/gh/muxiaoqi007/powerbi-visuals-catalog@main/public/data";
 const PAGE_SIZE = 36;
 const FAVORITES_KEY = "pbi-catalog-favorites";
 
 type LoadState =
   | { status: "loading" }
-  | { status: "ready"; catalog: Catalog }
+  | { status: "ready"; catalog: Catalog; dataBase: string }
   | { status: "error"; message: string };
 
 function readFavorites(): string[] {
@@ -31,12 +32,17 @@ function readFavorites(): string[] {
   }
 }
 
-async function loadCatalog(): Promise<Catalog> {
-  const endpoints = ["/api/catalog", `${import.meta.env.BASE_URL}data/catalog.json`];
+async function loadCatalog(): Promise<{ catalog: Catalog; dataBase: string }> {
+  const localBase = `${import.meta.env.BASE_URL}data`;
+  const endpoints = [
+    { url: "/api/catalog", base: DATA_CDN },
+    { url: `${DATA_CDN}/catalog.json`, base: DATA_CDN },
+    { url: `${localBase}/catalog.json`, base: localBase },
+  ];
   let lastError = "目录数据加载失败";
   for (const endpoint of endpoints) {
     try {
-      const response = await fetch(endpoint, { cache: "no-cache" });
+      const response = await fetch(endpoint.url, { cache: "no-cache" });
       const type = response.headers.get("content-type") ?? "";
       if (!response.ok || !type.includes("application/json")) continue;
       const catalog = (await response.json()) as Catalog;
@@ -44,7 +50,7 @@ async function loadCatalog(): Promise<Catalog> {
         lastError = "目录数据为空";
         continue;
       }
-      return catalog;
+      return { catalog, dataBase: endpoint.base };
     } catch (error) {
       lastError = error instanceof Error ? error.message : lastError;
     }
@@ -64,8 +70,8 @@ export default function App() {
   const load = useCallback(async () => {
     setState({ status: "loading" });
     try {
-      const catalog = await loadCatalog();
-      setState({ status: "ready", catalog });
+      const { catalog, dataBase } = await loadCatalog();
+      setState({ status: "ready", catalog, dataBase });
     } catch (error) {
       setState({ status: "error", message: error instanceof Error ? error.message : "目录数据加载失败" });
     }
@@ -344,7 +350,13 @@ export default function App() {
         </footer>
       </main>
 
-      {selected && <DetailPanel visual={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <DetailPanel
+          visual={selected}
+          dataBase={state.status === "ready" ? state.dataBase : `${import.meta.env.BASE_URL}data`}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </div>
   );
 }
