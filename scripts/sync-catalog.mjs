@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 const SOURCE_URL =
   "https://raw.githubusercontent.com/DataChant/PowerBI-Visuals-Marketplace/main/Custom%20Visuals.csv";
@@ -185,6 +185,16 @@ async function fetchSource() {
   }
 }
 
+async function readPreviousGeneratedAt(records) {
+  try {
+    const previous = JSON.parse(await readFile(OUTPUT, "utf8"));
+    const sameVisuals = JSON.stringify(previous.visuals) === JSON.stringify(records);
+    return sameVisuals && typeof previous.meta?.generatedAt === "string" ? previous.meta.generatedAt : null;
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
   const csv = await fetchSource();
   const { records, skipped, columns } = normalizeCsv(csv);
@@ -193,9 +203,10 @@ async function main() {
   for (const record of records) {
     for (const category of record.categories) categories[category] = (categories[category] || 0) + 1;
   }
+  const previousGeneratedAt = await readPreviousGeneratedAt(records);
   const payload = {
     meta: {
-      generatedAt: new Date().toISOString(),
+      generatedAt: previousGeneratedAt ?? new Date().toISOString(),
       source: "DataChant / Microsoft Power BI Visuals Marketplace",
       sourceUrl: "https://github.com/DataChant/PowerBI-Visuals-Marketplace",
       marketplaceUrl: "https://marketplace.microsoft.com/en-US/search/products?product=power-bi-visuals",
