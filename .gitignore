@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.cache/
+.superpowers/
+.wrangler/
+*.qoder.site
+.env
+.env.*
+.DS_Store

@@ -1,0 +1,38 @@
+name: Sync catalog data
+
+on:
+  schedule:
+    # 每天 05:00（北京时间）同步 DataChant 的最新图表目录
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-catalog
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Generate catalog snapshot
+        run: npm run sync
+      - name: Commit snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data/catalog.json
+          if git diff --staged --quiet; then
+            echo "No catalog changes"
+          else
+            git commit -m "chore: sync Power BI visuals catalog"
+            git push
+          fi

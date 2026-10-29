@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "powerbi-visuals-catalog",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-01-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+  "vars": {
+    "CATALOG_URL": "https://raw.githubusercontent.com/muxiaoqi007/powerbi-visuals-catalog/main/public/data/catalog.json"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
